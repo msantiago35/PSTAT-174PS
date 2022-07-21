@@ -1,2 +1,2 @@
-# PSTAT-174PS
+# PSTAT-174
 Time Series analysis 
