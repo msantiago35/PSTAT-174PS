@@ -1,0 +1,239 @@
+#open libraries and install packages
+knitr::opts_chunk$set(echo = TRUE,fig.pos = 'H')
+library(ggplot2)
+library(ggfortify)
+#install.packages("qpcR")
+#install.packages("rgl")
+library(qpcR)
+library(forecast)
+
+#read data
+ASPW.csv <- read.table("ASPW.csv",sep=",", header=FALSE, skip=1, nrows=180)
+#print(ASPW.csv)
+ASPW <- ts(ASPW.csv[, 2], start = c(1975,01), frequency = 4)
+ASPW.data <- ASPW[1:172]
+ts.plot(ASPW.data, main="Raw Data")
+
+# training dataset
+ASPWt = ASPW[c(1:160)]
+# test dataset
+ASPW.test = ASPW[c(161:172)]
+# plot of training dataset
+plot.ts(ASPWt)
+fitt <- lm(ASPWt~as.numeric(1:length(ASPWt))); abline(fitt,col="red")
+abline(h=mean(ASPWt),col="blue")
+par(mfrow=c(1,3))
+hist(ASPWt, col="light blue",xlab = "",main = "Histogram of ASPW")
+acf(ASPWt,lag.max = 30,main="ACF of ASPW")
+#pacf(ASPWt,lag.max = 30,main="PACF of ASPW")
+
+
+#find lambda value
+require(MASS)
+bc <- boxcox(ASPWt ~ as.numeric(1:length(ASPWt)))
+lambda=bc$x[which(bc$y==max(bc$y))]
+print(c("lambda = ",lambda))
+
+
+#boxcox transformation
+ASPWt.bc <- (1/lambda)*(ASPWt^lambda-1)
+plot.ts(ASPWt.bc, main = "BoxCox Transformed ASPW")
+n.bc <- length(ASPWt.bc)
+fit.bc <- lm(ASPWt.bc ~ as.numeric((1:n.bc)))
+abline(fit.bc,col="red")
+cat(" Mean after BoxCox transformation:", mean(ASPWt.bc))
+abline(h=mean(ASPWt.bc),col="blue")
+cat(" Variance after BoxCox transformation:", var(ASPWt.bc))
+
+
+#log transformation
+ASPWt.log <- log(ASPWt)
+cat(" Mean after Log transformation:", mean(ASPWt.log))
+cat(" Variance after Log transformation:", var(ASPWt.log))
+
+
+#square root transformation
+ASPWt.sqrt <- sqrt(ASPWt)
+cat(" Mean after Square root transformation:", mean(ASPWt.sqrt))
+cat(" Variance after Square root transformation: ", var(ASPWt.sqrt))
+
+
+#compare transformations
+par(mfrow = c(2,2))
+ts.plot(ASPWt, main = "Original data")
+ts.plot(ASPWt.bc, main = "Box-Cox transformed data")
+ts.plot(ASPWt.log, main = "Log transformed data")
+ts.plot(ASPWt.sqrt, main = "Square root transformed data")
+
+
+#compare histograms
+par(mfrow = c(1,4))
+hist(ASPWt, col="light blue", main="Original")
+hist(ASPWt.bc, col="light blue", main="Transformed with Box-Cox")
+hist(ASPWt.log, col="light blue", main="Transformed with Log")
+hist(ASPWt.sqrt, col="light blue", main="Transformed with square root ")
+
+
+#decompose to find trend
+y1 <- ts(as.ts(ASPWt.bc), frequency = 4)
+decomp1 <- decompose(y1)
+plot(decomp1)
+
+
+#Differencing data at lag 4
+ASPWt.4 <- diff(ASPWt.bc, lag = 4)
+plot.ts(ASPWt.4, main = "Boxcox transformation differenced at lag 4")
+fit4 <- lm(ASPWt.4 ~ as.numeric(1:length(ASPWt.4)))
+#mean(ASPWt.4) #3.332874
+abline(fit4, col = "red")
+abline(h=mean(ASPWt.4))
+cat(" variance after boxcox transformation:",var(ASPWt.bc))
+cat(" variance after boxcox and difference at lag 4:",var(ASPWt.4))
+par(mfrow=c(1,2))
+acf(ASPWt.4, lag.max = 40)
+pacf(ASPWt.4, lag.max = 40)
+
+
+#Differencing data at lag 1
+ASPWt.4.1 <-diff(ASPWt.4, lag = 1)
+plot.ts(ASPWt.4.1, main = "TS for bc(U_t) and difference lagt 4 & 1")
+fit4.1 <- lm(ASPWt.4.1 ~ as.numeric(1:length(ASPWt.4.1)))
+#mean(ASPWt.4.1) #-0.02907558
+abline(fit4.1, col = "red")
+abline(h=mean(ASPWt.4.1))
+cat(" variance after boxcox and difference at lag 4 & 1:",var(ASPWt.4.1)) #13.73318
+par(mfrow=c(1,2))
+acf(ASPWt.4.1, lag.max = 40, main = "ACF after difference at lag 4 and lag 1")
+pacf(ASPWt.4.1, lag.max = 40, main = "PACF after difference at lag 4 and lag 1")
+par(mfrow=c(1,2))
+hist(ASPWt.bc,col = "light green",xlab = "",main = "Histogram boxcox transformation")
+hist(ASPWt.4.1, col="light blue", xlab="", main="Histogram difference at lag 4 & 1")
+
+
+# Histogram of transformed and differenced data with normal
+# curve
+hist(ASPWt.4.1, density = 10, breaks = 10,
+col = "blue",xlab = "",prob=TRUE)
+m <- mean(ASPWt.4.1)
+std <- sqrt(var(ASPWt.4.1))
+curve(dnorm(x,m,std),add=TRUE)
+
+
+#ACF
+par(mfrow=c(1,2))
+acf(ASPWt.bc, lag.max = 40, main="ACF of bc(U_t)")
+acf(ASPWt.4.1, lag.max = 40, main= "ACF of bc(U_t) differenced at lag 4 &1")
+
+#PACF
+par(mfrow=c(1,2))
+pacf(ASPWt.bc, lag.max = 40, main="PACF of bc(U_t)")
+pacf(ASPWt.4.1, lag.max = 40, main= "PACF of bc(U_t) differenced at lag 4 & 1")
+#AICc of MA(22) # 790.2941
+AICc(arima(ASPWt.bc, order = c(0,1,22), seasonal=list(order=c(0,1,0),period=4),method = "ML"))
+#AICc of AR(22) # 795.7016
+AICc(arima(ASPWt.bc, order = c(22,1,0), seasonal=list(order=c(0,1,0),period=4),method = "ML"))
+
+
+# Candidate models:
+df <- expand.grid(p=0:1, q=0:1, P=0:4, Q=0:2)
+df <- cbind(df, AICc=NA)
+# Compute AICc:
+for (i in 1:nrow(df)) {
+sarima.obj <- NULL
+try(arima.obj <- arima(ASPWt.bc, order=c(df$p[i], 1, df$q[i]),
+seasonal=list(order=c(df$P[i], 1, df$Q[i]), period=4),
+method="ML"))
+if (!is.null(arima.obj)) { df$AICc[i] <- AICc(arima.obj) }
+# print(df[i, ])
+}
+df[which.min(df$AICc), ] #773.6474
+
+
+# Model 1
+model1 <- arima(ASPWt.bc, order = c(1,1,0), seasonal=list(order=c(4,1,2),period=4),method = "ML")
+print(model1)
+print(c("AICc for Model 1 =",AICc(arima(ASPWt.bc, order = c(1,1,0),
+seasonal=list(order=c(4,1,2),period=4),method = "ML"))))
+#773.647419357496
+
+
+# Revised Model 1
+model <- arima(ASPWt.bc, order = c(1,1,0), seasonal=list(order=c(4,1,2),period=4),
+fixed = c(NA,NA,NA,0,NA,NA,NA),transform.pars = FALSE, method = "ML")
+print(model1)
+model <- AICc(arima(ASPWt.bc, order = c(1,1,0),
+seasonal=list(order=c(4,1,2),period=4),fixed = c(NA,NA,NA,0,NA,NA,NA),
+transform.pars = FALSE, method = "ML"))
+print(model) #772.7436
+par(mfrow=c(1,2))
+source("plot.roots.R")
+plot.roots(NULL,polyroot(c(1,-0.4227,0.1626,0,-0.2362)), main="(A) roots of ar part of Model, seasonal"plot.roots(NULL,polyroot(c(1,-0.2962,-0.7038)), main="(A) roots of ma part of Model, seasonal")
+model1 <- AICc(arima(ASPWt.bc, order = c(1,1,0),
+seasonal=list(order=c(4,1,2),period=4),fixed = c(NA,NA,NA,0,NA,0,NA),
+transform.pars = FALSE, method = "ML"))
+33
+model1 <- arima(ASPWt.bc, order = c(1,1,0),seasonal=list(order=c(4,1,2),period=4),fixed = c(NA,NA,NA,0,Ntransform.pars = FALSE, method = "ML")
+print(model1) #AICc = 776.8292
+# Check their invertibility
+                
+# For Model SARIMA(1,1,0)*(4,1,2)^4
+par(mfrow=c(1,2))
+source("plot.roots.R")
+plot.roots(NULL,polyroot(c(1,-0.6566,0.1723,0,-0.1484)), main="(A) roots of ar part of Model 1, seasonalplot.roots(NULL,polyroot(c(1,0,-0.8164)), main="(A) roots of ma part of Model 1, seasonal")
+#residuals plots
+model1 <- arima(ASPWt.bc, order = c(1,1,0), seasonal=list(order=c(4,1,2),period=4),method = "ML")
+res <- residuals(model1)
+cat("Mean of residuals:",mean(res))
+cat("Variance of residuals:",var(res))
+#Time series plot for fitted residuals
+par(mfrow=c(1, 1))
+ts.plot(res, main="Fitted Residuals")
+fitt <- lm(res ~ as.numeric(1:length(res))); abline(fitt, col="blue")
+abline(h=mean(res),col=("red"))
+# Histogram and QQ-plot:
+par(mfrow=c(1,2))
+hist(res,main = "Histogram of res")
+qqnorm(res, main = "Normal Q-Q Plot of res")
+qqline(res,col ="blue")
+# ACF and PACF:
+par(mfrow=c(1, 2))
+acf(res, lag.max = 60, main="Autocorrelation of res")
+pacf(res, lag.max = 60, main="Partial Autocorrelation of res")
+#Diagnostic checking for Model
+#Test for independence of residuals
+Box.test(res, lag = 14, type = c("Box-Pierce"), fitdf = 7) #lag = sqrt(n)
+Box.test(res, lag = 14, type = c("Ljung-Box"), fitdf = 7)
+Box.test(res^2, lag = 14, type = c("Ljung-Box"), fitdf = 0)
+# Test for normality of residuals
+shapiro.test(res)
+#R model Yule-walker
+acf(res^2, lag.max = 60, main = "res^2")
+ar(x=res, aic = TRUE,order.max = NULL,method = c("yule-walker"))
+34
+# R forecast transformed
+# To produce graph with 20 forecasts on transformed data
+fit <- arima(ASPWt.bc, order = c(1,1,0),seasonal=list(order=c(4,1,2),period=4),
+fixed = c(NA,NA,NA,0,NA,0,NA),transform.pars = FALSE, method = "ML")
+forecast(fit)
+pred.tr <- predict(fit, n.ahead = 12)
+U.tr = pred.tr$pred + 2*pred.tr$se
+L.tr = pred.tr$pred - 2*pred.tr$se
+ts.plot(ASPWt.bc,xlim=c(1,length(ASPWt.bc)+12),ylim=c(min(ASPWt.bc),max(U.tr)),main = "3 year forecast wlines(U.tr, col="blue", lty="dashed")
+lines(L.tr, col="blue", lty="dashed")
+points((length(ASPWt.bc)+1):(length(ASPWt.bc)+12),pred.tr$pred,col="red")
+           
+# r forecast original
+           
+# To produce graph with forecasts on original data
+pred.orig <- (lambda*pred.tr$pred+1)^(1/lambda) #ASPWt.bc = (1/lambda)*(ASPWt^lambda-1)
+U = (lambda*U.tr+1)^(1/lambda)
+L = (lambda*L.tr+1)^(1/lambda)
+ts.plot(ASPWt,xlim=c(1,length(ASPWt)+12),ylim=c(min(ASPWt),max(U)),main = "3 year forecast on training dlines(U,col="blue",lty="dashed")
+lines(L,col="blue",lty="dashed")
+points((length(ASPWt)+1):(length(ASPWt)+12),pred.orig,col="red")
+# r forecast zoomed and true
+# To plot zoomed forecasts and true values:
+ts.plot(ASPW.data,xlim=c(100,length(ASPWt)+12),ylim=c(250,max(U)),col="red", main = "Zoomed 3 year foreclines(U,col="blue",lty="dashed")
+lines(L,col="blue",lty="dashed")
+points((length(ASPWt)+1):(length(ASPWt)+12),pred.orig,col="green")
+points((length(ASPWt)+1):(length(ASPWt)+12),pred.orig,col="black")
